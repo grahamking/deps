@@ -27,13 +27,14 @@ import (
 	"strings"
 )
 
-const usage = `USAGE: deps <package> [-display deep|layers|count -lib -stdlib -short]
+const usage = `USAGE: deps <package> [-display deep|count|layers|depth -lib -stdlib -short]
 "deps" prints the internal dependencies of a Go package.
 
--d deep|layers|count  Display more / different information
+-d deep|layers|count|depth  Display more / different information
  deep: print the dependencies of the dependencies, recursively.
- layers: display the dependency layers
  count: show the packages organised by how many imports they have
+ layers: display the top-down dependency layers
+ depth: display the bottom-up dependency layers
 
 -lib  Include libraries.
  By default deps ignores anything starting with github.com, bitbucket.org, etc,
@@ -58,7 +59,7 @@ var (
 		"launchpad.net",
 		"code.google.com",
 	}
-	display         = flag.String("d", "deps", "Display format: deep|layers")
+	display         = flag.String("d", "deps", "Display format: deep|layers|count|depth")
 	isHelp          = flag.Bool("h", false, "Display this help")
 	isIncludeStdlib = flag.Bool("stdlib", false, "Include standard library packages")
 	isIncludeLibs   = flag.Bool("lib", false, "Include third-party library packages")
@@ -67,6 +68,7 @@ var (
 	deps            map[string][]*build.Package
 	numDeps         map[string]int
 	layerPos        map[string]int
+	depth           map[string]int
 	lowestLayer     int
 	maxDeps         int
 	progress        int
@@ -89,6 +91,7 @@ func main() {
 	numDeps = make(map[string]int)
 	deps = make(map[string][]*build.Package)
 	layerPos = make(map[string]int)
+	depth = make(map[string]int)
 
 	fmt.Println("Dependencies of", bold(rootPackage))
 	pkg, err := build.Import(rootPackage, "", 0)
@@ -102,9 +105,13 @@ func main() {
 
 	switch *display {
 	case "layers":
-		fmt.Println("Incoming dependency layers")
-		fmt.Println("Packages are depended upon by ones above them")
+		fmt.Println("Top-down dependency layers")
+		fmt.Println("Number after package name is number of imports")
 		layerDisplay()
+	case "depth":
+		fmt.Println("Bottom-up dependency layers")
+		fmt.Println("Number after package name is number of imports")
+		depthDisplay(rootPackage)
 	case "deep":
 		fmt.Println("Dependency tree")
 		deepDepsDisplay(rootPackage, 0)
@@ -116,7 +123,7 @@ func main() {
 	}
 }
 
-func analyze(pkg *build.Package, layer int) {
+func analyze(pkg *build.Package, layer int) int {
 	os.Stdout.Write([]byte(fmt.Sprintf("Working ... %d   \r", progress)))
 	progress++
 	os.Stdout.Sync()
@@ -127,7 +134,7 @@ func analyze(pkg *build.Package, layer int) {
 	path := pkg.ImportPath
 	if val, ok := layerPos[path]; ok && layer <= val {
 		// We've already found this package at a deeper layer
-		return
+		return depth[path]
 	}
 
 	layerPos[path] = layer
@@ -152,9 +159,18 @@ func analyze(pkg *build.Package, layer int) {
 	}
 	deps[path] = ours
 
+	var ourDepth int
 	for _, innerPkg := range ours {
-		analyze(innerPkg, layer+1)
+		d := analyze(innerPkg, layer+1)
+		if d > ourDepth {
+			ourDepth = d
+		}
 	}
+	if len(ours) != 0 {
+		ourDepth++
+	}
+	depth[path] = ourDepth
+	return ourDepth
 }
 
 func isStdlib(p *build.Package) bool {
@@ -179,24 +195,6 @@ func isThirdParty(p *build.Package) bool {
 	return false
 }
 
-func layerDisplay() {
-	layers := make([][]string, lowestLayer+1)
-	for pkgName, lay := range layerPos {
-		if layers[lay] == nil {
-			layers[lay] = make([]string, 0, 1)
-		}
-		layers[lay] = append(layers[lay], pkgName)
-	}
-	for layer, pkgs := range layers {
-		annotated := make([]string, 0, len(pkgs))
-		for _, pkgName := range pkgs {
-			annotated = append(annotated, fmt.Sprintf("%s %d", short(pkgName), numDeps[pkgName]))
-		}
-		sort.Strings(annotated)
-		fmt.Printf("%d: %s\n", layer, strings.Join(annotated, ", "))
-	}
-}
-
 func depsDisplay(pkgName string) {
 	if len(deps[pkgName]) == 0 {
 		fmt.Println("No internal dependencies")
@@ -210,7 +208,6 @@ func deepDepsDisplay(pkgName string, depth int) {
 	indent := strings.Repeat("| ", depth)
 	fmt.Printf("%s%s\n", indent, short(pkgName))
 	for _, pkg := range deps[pkgName] {
-		//fmt.Printf("%s|-> %s\n", indent, pkg.ImportPath)
 		deepDepsDisplay(pkg.ImportPath, depth+1)
 	}
 }
@@ -229,9 +226,53 @@ func countDisplay() {
 		if len(pkgs) == 0 {
 			continue
 		}
-		sort.Strings(pkgs)
 		fmt.Println(i, strings.Join(pkgs, ", "))
 	}
+}
+
+func layerDisplay() {
+	layers := make([][]string, lowestLayer+1)
+	for pkgName, lay := range layerPos {
+		if layers[lay] == nil {
+			layers[lay] = make([]string, 0, 1)
+		}
+		layers[lay] = append(layers[lay], pkgName)
+	}
+	for layer, pkgs := range layers {
+		fmt.Printf("%d: %s\n", layer, strings.Join(annotated(pkgs), ", "))
+	}
+}
+
+func depthDisplay(pkgName string) {
+	idxDepth := make([][]string, depth[pkgName]+1)
+	for pkgName, d := range depth {
+		if idxDepth[d] == nil {
+			idxDepth[d] = make([]string, 0, 1)
+		}
+		idxDepth[d] = append(idxDepth[d], pkgName)
+	}
+	for i := len(idxDepth) - 1; i >= 0; i-- {
+		pkgs := idxDepth[i]
+		if len(pkgs) == 0 {
+			continue
+		}
+		sort.Strings(pkgs)
+		fmt.Println(i, strings.Join(annotated(pkgs), ", "))
+	}
+}
+
+func annotated(pkgs []string) []string {
+	ann := make([]string, 0, len(pkgs))
+	for _, pkgName := range pkgs {
+		num := numDeps[pkgName]
+		if num > 0 {
+			ann = append(ann, fmt.Sprintf("%s %d", short(pkgName), num))
+		} else {
+			ann = append(ann, fmt.Sprintf("%s", short(pkgName)))
+		}
+	}
+	sort.Strings(ann)
+	return ann
 }
 
 func bold(msg string) string {
