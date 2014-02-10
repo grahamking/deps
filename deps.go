@@ -27,12 +27,13 @@ import (
 	"strings"
 )
 
-const usage = `USAGE: deps <package> [-display deep|layers -lib -stdlib -short]
+const usage = `USAGE: deps <package> [-display deep|layers|count -lib -stdlib -short]
 "deps" prints the internal dependencies of a Go package.
 
--d deep|layers  Display more / different information
+-d deep|layers|count  Display more / different information
  deep: print the dependencies of the dependencies, recursively.
  layers: display the dependency layers
+ count: show the packages organised by how many imports they have
 
 -lib  Include libraries.
  By default deps ignores anything starting with github.com, bitbucket.org, etc,
@@ -67,6 +68,7 @@ var (
 	numDeps         map[string]int
 	layerPos        map[string]int
 	lowestLayer     int
+	maxDeps         int
 	progress        int
 )
 
@@ -100,9 +102,15 @@ func main() {
 
 	switch *display {
 	case "layers":
+		fmt.Println("Incoming dependency layers")
+		fmt.Println("Packages are depended upon by ones above them")
 		layerDisplay()
 	case "deep":
+		fmt.Println("Dependency tree")
 		deepDepsDisplay(rootPackage, 0)
+	case "count":
+		fmt.Println("Packages by descending number of internal imports")
+		countDisplay()
 	default:
 		depsDisplay(rootPackage)
 	}
@@ -139,6 +147,9 @@ func analyze(pkg *build.Package, layer int) {
 	}
 
 	numDeps[path] = len(ours)
+	if len(ours) > maxDeps {
+		maxDeps = len(ours)
+	}
 	deps[path] = ours
 
 	for _, innerPkg := range ours {
@@ -201,6 +212,25 @@ func deepDepsDisplay(pkgName string, depth int) {
 	for _, pkg := range deps[pkgName] {
 		//fmt.Printf("%s|-> %s\n", indent, pkg.ImportPath)
 		deepDepsDisplay(pkg.ImportPath, depth+1)
+	}
+}
+
+func countDisplay() {
+	idxCount := make([][]string, maxDeps+1)
+	for pkgName, count := range numDeps {
+		if idxCount[count] == nil {
+			idxCount[count] = make([]string, 0, 1)
+		}
+		idxCount[count] = append(idxCount[count], pkgName)
+	}
+
+	for i := maxDeps; i >= 0; i-- {
+		pkgs := idxCount[i]
+		if len(pkgs) == 0 {
+			continue
+		}
+		sort.Strings(pkgs)
+		fmt.Println(i, strings.Join(pkgs, ", "))
 	}
 }
 
