@@ -30,7 +30,7 @@ import (
 const usage = `USAGE: deps <package> [-display deep|layers -lib -stdlib -short]
 "deps" prints the internal dependencies of a Go package.
 
--display deep|layers  Display more / different information
+-d deep|layers  Display more / different information
  deep: print the dependencies of the dependencies, recursively.
  layers: display the dependency layers
 
@@ -57,7 +57,7 @@ var (
 		"launchpad.net",
 		"code.google.com",
 	}
-	display         = flag.String("display", "deps", "Display format: deep|layers")
+	display         = flag.String("d", "deps", "Display format: deep|layers")
 	isHelp          = flag.Bool("h", false, "Display this help")
 	isIncludeStdlib = flag.Bool("stdlib", false, "Include standard library packages")
 	isIncludeLibs   = flag.Bool("lib", false, "Include third-party library packages")

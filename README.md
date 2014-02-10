@@ -4,10 +4,10 @@
 
 ## Usage
 ```
-USAGE: deps <package> [-display deep|layers -lib -stdlib -short]
+USAGE: deps <package> [-d deep|layers -lib -stdlib -short]
 "deps" prints the internal dependencies of a Go package.
 
--display deep|layers  Display more / different information
+-d deep|layers  Display more / different information
  deep: print the dependencies of the dependencies, recursively.
  layers: display the dependency layers
 
@@ -43,9 +43,9 @@ Dependencies of os/signal
 
 The `-stdlib` flag says to include the Go standard packages, which are usually not displayed.
 
-Adding the `-display deep` does this recursively.
+Adding the `-d deep` does this recursively.
 
-    $ deps io -stdlib -display deep
+    $ deps io -stdlib -d deep
 
 will output:
 ```
@@ -60,9 +60,9 @@ io
 
 ### Layers
 
-The `-display layers` option organises the dependencies by layers. The ones listed in higher rows depend on the ones in lower rows.
+The `-d layers` option organises the dependencies by layers. The ones listed in higher rows depend on the ones in lower rows.
 
-    $ deps github.com/hashicorp/serf -display layers
+    $ deps github.com/hashicorp/serf -d layers
 
 will display
 ```
@@ -77,7 +77,7 @@ The number listed after the package name is the number of dependencies of that p
 
 Here's 'serf' again, but with third-party packages:
 
-    $ deps github.com/hashicorp/serf -display layers -lib
+    $ deps github.com/hashicorp/serf -d layers -lib
 
 outputs
 ```
@@ -94,7 +94,7 @@ Notice how 'github.com/mitchellh/cli' is on row number 2, even though it has no 
 
 Here's a bigger example, using `-short` to trim the name of internal packages:
 
-    $ deps github.com/coreos/etcd -display layers -short
+    $ deps github.com/coreos/etcd -d layers -short
 
 gives
 ```
